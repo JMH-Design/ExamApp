@@ -15,35 +15,101 @@ export type TextbookResult = {
   coverUrl?: string;
 };
 
-type TextbookSearchStatus = "idle" | "loading" | "success" | "error";
+export type DirectSearchFilters = {
+  subject?: string;
+  yearMin?: number;
+  yearMax?: number;
+  author?: string;
+  edition?: string;
+};
+
+type SearchStatus = "idle" | "loading" | "success" | "error";
+type RecommendationsStatus = "idle" | "loading" | "success" | "error";
 
 type OnboardingContextValue = {
-  textbookSearchStatus: TextbookSearchStatus;
   textbooks: TextbookResult[];
-  textbookSearchError: string | null;
-  triggerTextbookSearch: (school: string, program: string, course?: string) => void;
-  clearTextbookSearch: () => void;
+  searchStatus: SearchStatus;
+  searchError: string | null;
+  triggerDirectSearch: (
+    query: string,
+    filters?: DirectSearchFilters,
+    page?: number
+  ) => void;
+  aiRecommendations: TextbookResult[];
+  recommendationsStatus: RecommendationsStatus;
+  recommendationsError: string | null;
+  triggerRecommendations: (school: string, program: string, course?: string) => void;
+  clearRecommendations: () => void;
 };
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<TextbookSearchStatus>("idle");
   const [textbooks, setTextbooks] = useState<TextbookResult[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const [searchStatus, setSearchStatus] = useState<SearchStatus>("idle");
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [aiRecommendations, setAiRecommendations] = useState<TextbookResult[]>([]);
+  const [recommendationsStatus, setRecommendationsStatus] =
+    useState<RecommendationsStatus>("idle");
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const recsAbortRef = useRef<AbortController | null>(null);
 
-  const triggerTextbookSearch = useCallback(
-    (school: string, program: string, course?: string) => {
-      abortRef.current?.abort();
-      abortRef.current = new AbortController();
-      const signal = abortRef.current.signal;
+  const triggerDirectSearch = useCallback(
+    (query: string, filters: DirectSearchFilters = {}, page = 1) => {
+      searchAbortRef.current?.abort();
+      searchAbortRef.current = new AbortController();
+      const signal = searchAbortRef.current.signal;
 
-      setStatus("loading");
+      setSearchStatus("loading");
       setTextbooks([]);
-      setError(null);
+      setSearchError(null);
 
-      fetch("/api/textbooks/search", {
+      fetch("/api/textbooks/search-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: query.trim(),
+          ...filters,
+          page,
+          limit: 24,
+        }),
+        signal,
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error ?? `Request failed: ${res.status}`);
+          }
+          return res.json();
+        })
+        .then((data) => {
+          if (signal.aborted) return;
+          setTextbooks(data.textbooks ?? []);
+          setSearchStatus("success");
+          setSearchError(null);
+        })
+        .catch((err) => {
+          if (signal.aborted || err.name === "AbortError") return;
+          setSearchStatus("error");
+          setSearchError(err.message ?? "Search failed");
+          setTextbooks([]);
+        });
+    },
+    []
+  );
+
+  const triggerRecommendations = useCallback(
+    (school: string, program: string, course?: string) => {
+      recsAbortRef.current?.abort();
+      recsAbortRef.current = new AbortController();
+      const signal = recsAbortRef.current.signal;
+
+      setRecommendationsStatus("loading");
+      setAiRecommendations([]);
+      setRecommendationsError(null);
+
+      fetch("/api/textbooks/recommendations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ school, program, course }),
@@ -58,35 +124,39 @@ export function OnboardingProvider({ children }: { children: React.ReactNode }) 
         })
         .then((data) => {
           if (signal.aborted) return;
-          setTextbooks(data.textbooks ?? []);
-          setStatus("success");
-          setError(null);
+          setAiRecommendations(data.textbooks ?? []);
+          setRecommendationsStatus("success");
+          setRecommendationsError(null);
         })
         .catch((err) => {
           if (signal.aborted || err.name === "AbortError") return;
-          setStatus("error");
-          setError(err.message ?? "Search failed");
-          setTextbooks([]);
+          setRecommendationsStatus("error");
+          setRecommendationsError(err.message ?? "Recommendations failed");
+          setAiRecommendations([]);
         });
     },
     []
   );
 
-  const clearTextbookSearch = useCallback(() => {
-    abortRef.current?.abort();
-    setStatus("idle");
-    setTextbooks([]);
-    setError(null);
+  const clearRecommendations = useCallback(() => {
+    recsAbortRef.current?.abort();
+    setRecommendationsStatus("idle");
+    setAiRecommendations([]);
+    setRecommendationsError(null);
   }, []);
 
   return (
     <OnboardingContext.Provider
       value={{
-        textbookSearchStatus: status,
         textbooks,
-        textbookSearchError: error,
-        triggerTextbookSearch,
-        clearTextbookSearch,
+        searchStatus,
+        searchError,
+        triggerDirectSearch,
+        aiRecommendations,
+        recommendationsStatus,
+        recommendationsError,
+        triggerRecommendations,
+        clearRecommendations,
       }}
     >
       {children}

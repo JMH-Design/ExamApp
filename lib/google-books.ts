@@ -11,20 +11,52 @@ export type GoogleBooksVolume = {
   };
 };
 
+export type GoogleBooksSearchFilters = {
+  subject?: string;
+  yearMin?: number;
+  yearMax?: number;
+  author?: string;
+  edition?: string;
+};
+
 export async function searchGoogleBooks(
   query: string,
   limit = 1
 ): Promise<GoogleBooksVolume | null> {
+  const results = await searchGoogleBooksFull(query, { limit });
+  return results[0] ?? null;
+}
+
+export async function searchGoogleBooksFull(
+  query: string,
+  options: {
+    limit?: number;
+    offset?: number;
+    filters?: GoogleBooksSearchFilters;
+  } = {}
+): Promise<GoogleBooksVolume[]> {
+  const { limit = 20, offset = 0, filters = {} } = options;
+  const parts: string[] = [query.trim()];
+
+  if (filters.subject) parts.push(`subject:${filters.subject}`);
+  if (filters.author) parts.push(`inauthor:${filters.author}`);
+  if (filters.edition) parts.push(filters.edition);
+  if (filters.yearMin) parts.push(`${filters.yearMin}`);
+  if (filters.yearMax && !filters.yearMin) parts.push(`${filters.yearMax}`);
+
+  const q = parts.filter(Boolean).join(" ");
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
   const params = new URLSearchParams({
-    q: query,
-    maxResults: String(limit),
+    q: q || "textbook",
+    maxResults: String(Math.min(limit, 40)),
+    startIndex: String(offset),
     printType: "books",
+    orderBy: "relevance",
   });
   if (apiKey) params.set("key", apiKey);
 
   const res = await fetch(`${GOOGLE_BOOKS_URL}?${params}`);
-  if (!res.ok) return null;
+  if (!res.ok) return [];
 
   const data = (await res.json()) as {
     items?: Array<{
@@ -37,16 +69,31 @@ export async function searchGoogleBooks(
     }>;
   };
 
-  const item = data.items?.[0];
-  if (!item?.volumeInfo) return null;
+  const items = data.items ?? [];
+  const mapped: GoogleBooksVolume[] = [];
+  for (const item of items) {
+    const vi = item.volumeInfo;
+    if (!vi?.title) continue;
+    mapped.push({
+      title: vi.title,
+      authors: vi.authors,
+      publishedDate: vi.publishedDate,
+      imageLinks: vi.imageLinks,
+    });
+  }
+  let volumes = mapped;
 
-  const vi = item.volumeInfo;
-  return {
-    title: vi.title ?? "",
-    authors: vi.authors,
-    publishedDate: vi.publishedDate,
-    imageLinks: vi.imageLinks,
-  };
+  if (filters.yearMin || filters.yearMax) {
+    volumes = volumes.filter((v) => {
+      const year = v.publishedDate ? parseInt(v.publishedDate.slice(0, 4), 10) : NaN;
+      if (isNaN(year)) return true;
+      if (filters.yearMin && year < filters.yearMin) return false;
+      if (filters.yearMax && year > filters.yearMax) return false;
+      return true;
+    });
+  }
+
+  return volumes;
 }
 
 export function getCoverUrl(volume: GoogleBooksVolume): string | undefined {
