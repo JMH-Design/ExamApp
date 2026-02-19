@@ -1,0 +1,37 @@
+[
+  {
+    "id": "msn-graduate-entry",
+    "name": "Graduate Entry Master of Science in Nursing",
+    "schoolId": "ohio-state"
+  },
+  {
+    "id": "msn-traditional",
+    "name": "Traditional Master of Science in Nursing",
+    "schoolId": "ohio-state"
+  },
+  {
+    "id": "post-masters",
+    "name": "Post-Master's Study Option",
+    "schoolId": "ohio-state"
+  },
+  {
+    "id": "dnp-nurse-executive",
+    "name": "Doctor of Nursing Practice - Nurse Executive",
+    "schoolId": "ohio-state"
+  },
+  {
+    "id": "dnp-clinical-expert",
+    "name": "Doctor of Nursing Practice - Clinical Expert",
+    "schoolId": "ohio-state"
+  },
+  {
+    "id": "mcr",
+    "name": "Master of Clinical Research",
+    "schoolId": "ohio-state"
+  },
+  {
+    "id": "mhi",
+    "name": "Master of Healthcare Innovation",
+    "schoolId": "ohio-state"
+  }
+]
